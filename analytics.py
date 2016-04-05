@@ -16,8 +16,7 @@ import pprint
 
 import pandas as pd
 import numpy as np
-from pandas.io.json import json_normalize
-#import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 
 import logging
 import logging.handlers
@@ -30,6 +29,10 @@ from threading import Thread
 pid = '/tmp/analytics.pid'
 pp = pprint.PrettyPrinter(indent=4)
 log = logging.getLogger("Analytics")
+
+# Configurations
+pd.set_option('display.mpl_style', 'default')
+pd.set_option('display.width', 300)
 pd.set_option('display.max_columns', 10)
 
 def setup_logging(debug):
@@ -94,13 +97,13 @@ def create_data_frame(country, timestamp, data):
     # Lambda's for extracting data from json
     domain = lambda cur_domain: cur_domain
     dns = lambda cur_domain: data[cur_domain]['dns'] if 'dns' in data[cur_domain] else []
-    finger_print = lambda cur_domain: data[cur_domain]['ssl']['sha256'] if 'ssl' in data[cur_domain] and 'sha256' in data[cur_domain]['ssl'] else ''
-    ssl_cipher_mode = lambda cur_domain: data[cur_domain]['ssl']['ciphers'][0] if 'ssl' in data[cur_domain] and 'ciphers' in data[cur_domain]['ssl'] else ''
-    ssl_key_size = lambda cur_domain: data[cur_domain]['ssl']['ciphers'][2] if 'ssl' in data[cur_domain] and 'ciphers' in data[cur_domain]['ssl'] else ''
-    ssl_match_name = lambda cur_domain: data[cur_domain]['ssl']['match_hostname'] if 'ssl' in data[cur_domain] and 'match_hostname' in data[cur_domain]['ssl'] else ''
-    ssl_issuer = lambda cur_domain: data[cur_domain]['ssl']['issuer'] if 'ssl' in data[cur_domain] and 'issuer' in data[cur_domain]['ssl'] else ''
-    ssl_common_name = lambda cur_domain: data[cur_domain]['ssl']['common_name'] if 'ssl' in data[cur_domain] and 'common_name' in data[cur_domain]['ssl'] else ''
-    ssl_alt_names = lambda cur_domain: data[cur_domain]['ssl']['subjectAltNames'] if 'ssl' in data[cur_domain] and 'subjectAltNames' in data[cur_domain]['ssl'] else ''
+    finger_print = lambda cur_domain: data[cur_domain]['ssl']['sha256'] if 'ssl' in data[cur_domain] and 'sha256' in data[cur_domain]['ssl'] else float('NaN')
+    ssl_cipher_mode = lambda cur_domain: data[cur_domain]['ssl']['ciphers'][2] if 'ssl' in data[cur_domain] and 'ciphers' in data[cur_domain]['ssl'] else float('NaN')
+    ssl_key_size = lambda cur_domain: data[cur_domain]['ssl']['ciphers'][0] if 'ssl' in data[cur_domain] and 'ciphers' in data[cur_domain]['ssl'] else float('NaN')
+    ssl_match_name = lambda cur_domain: data[cur_domain]['ssl']['match_hostname'] if 'ssl' in data[cur_domain] and 'match_hostname' in data[cur_domain]['ssl'] else float('NaN')
+    ssl_issuer = lambda cur_domain: data[cur_domain]['ssl']['issuer'] if 'ssl' in data[cur_domain] and 'issuer' in data[cur_domain]['ssl'] else float('NaN')
+    ssl_common_name = lambda cur_domain: data[cur_domain]['ssl']['common_name'] if 'ssl' in data[cur_domain] and 'common_name' in data[cur_domain]['ssl'] else float('NaN')
+    ssl_alt_names = lambda cur_domain: data[cur_domain]['ssl']['subjectAltName'] if 'ssl' in data[cur_domain] and 'subjectAltName' in data[cur_domain]['ssl'] else float('NaN')
 
     df['country'] = list(map(lambda cur_domain: country, data))
     df['timestamp'] = list(map(lambda cur_domain: timestamp, data))
@@ -116,11 +119,28 @@ def create_data_frame(country, timestamp, data):
 
     return df
 
+def generate_cipher_mode_graphs(df):
+    prev_country = ''
+    keysize = df[['country','cipher_mode']].groupby(['country','cipher_mode']).size()
+    for (country, cipher_mode) in keysize.index:
+        if prev_country == country:
+            continue
+        else:
+            prev_country = country
+        name = '{0}_cipher_mode.png'.format(country)
+        plot = keysize[country].plot(kind='bar')
+        save_figure(plot, name)
+
+    log.info('Generated cipher-mode graphs')
+
+def save_figure(plot, name):
+    fig = plot.get_figure()
+    fig.savefig(os.path.join(args.result, name))
+    log.debug('Save figure (%s)', name)
+
 def main():
 
     log.info("Hacking Labs Analytics started")
-    pd.options.display.max_columns = 50
-    pd.set_option('display.width', 300)
 
     data = get_data()
     df = pd.DataFrame()
@@ -130,7 +150,10 @@ def main():
             df_tmp = create_data_frame(country, timestamp, data[country][timestamp])
             df = df.append(df_tmp, ignore_index=True)
 
-    print(df)
+    log.info('Finished importing, [%d] rows to DataFrame', df.shape[0])
+
+    generate_cipher_mode_graphs(df)
+    get_smallest_keysize(df)
 
     log.info("Analytics ended")
 
