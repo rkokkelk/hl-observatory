@@ -146,7 +146,6 @@ def find_invalid_certificates(df):
         open(path_output, 'w').close()
 
     domains = df[['domain','sha256']].groupby('domain')
-    #domains = df.groupby('domain').apply(['mode'])
     for group in domains.groups:
         compare = dict()
         cur_group = domains.get_group(group)['sha256']
@@ -172,7 +171,8 @@ def find_invalid_certificates(df):
             df[['country','commonName','validSSL','sha256','cipher_mode','dns']].iloc[[result_max[0]]].to_csv(path_output, index=None, sep=' ', mode='a')
             df[['country','commonName','validSSL','sha256','cipher_mode','dns']].iloc[result_min].to_csv(path_output, index=None, sep=' ', mode='a')
 
-            log.warn('Double entry found for %s', group)
+            log.debug('(%s) Invalid certificates found', group)
+    log.info('Finished analyse of invalid certificates')
 
 def main():
 
@@ -189,7 +189,7 @@ def main():
     log.info('Finished importing, [%d] rows to DataFrame', df.shape[0])
 
     find_invalid_certificates(df)
-     #generate_cipher_mode_graphs(df)
+    generate_cipher_mode_graphs(df)
 
     log.info("Analytics ended")
 
