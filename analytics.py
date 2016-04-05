@@ -119,6 +119,11 @@ def create_data_frame(country, timestamp, data):
 
     return df
 
+def save_figure(plot, name):
+    fig = plot.get_figure()
+    fig.savefig(os.path.join(args.result, name))
+    log.debug('Save figure (%s)', name)
+
 def generate_cipher_mode_graphs(df):
     prev_country = ''
     keysize = df[['country','cipher_mode']].groupby(['country','cipher_mode']).size()
@@ -133,10 +138,41 @@ def generate_cipher_mode_graphs(df):
 
     log.info('Generated cipher-mode graphs')
 
-def save_figure(plot, name):
-    fig = plot.get_figure()
-    fig.savefig(os.path.join(args.result, name))
-    log.debug('Save figure (%s)', name)
+
+def find_invalid_certificates(df):
+    path_output = os.path.join(args.result, 'invalid_certs.csv')
+    # Clear output file
+    if os.path.isfile(path_output):
+        open(path_output, 'w').close()
+
+    domains = df[['domain','sha256']].groupby('domain')
+    #domains = df.groupby('domain').apply(['mode'])
+    for group in domains.groups:
+        compare = dict()
+        cur_group = domains.get_group(group)['sha256']
+        
+        for index in cur_group.index:
+            # if value is nan
+            if type(cur_group[index]) is float:
+                continue
+
+            if cur_group[index] not in compare:
+                compare[cur_group[index]] = list()
+            compare[cur_group[index]].append(index)
+
+        # different checksum detected for same domain
+        if len(compare) > 1:
+            result_min = min(compare.values(), key=lambda x:len(x))
+            result_max = max(compare.values(), key=lambda x:len(x))
+
+            with open(path_output,'a') as f:
+                header = "\n\n{0} -- correct {1}, fault {2}\n".format(group, len(result_max),len(result_min))
+                f.write(header)
+
+            df[['country','commonName','validSSL','sha256','cipher_mode','dns']].iloc[[result_max[0]]].to_csv(path_output, index=None, sep=' ', mode='a')
+            df[['country','commonName','validSSL','sha256','cipher_mode','dns']].iloc[result_min].to_csv(path_output, index=None, sep=' ', mode='a')
+
+            log.warn('Double entry found for %s', group)
 
 def main():
 
@@ -152,8 +188,8 @@ def main():
 
     log.info('Finished importing, [%d] rows to DataFrame', df.shape[0])
 
-    generate_cipher_mode_graphs(df)
-    get_smallest_keysize(df)
+    find_invalid_certificates(df)
+     #generate_cipher_mode_graphs(df)
 
     log.info("Analytics ended")
 
