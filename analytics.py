@@ -97,19 +97,21 @@ def create_data_frame(country, timestamp, data):
     # Lambda's for extracting data from json
     domain = lambda cur_domain: cur_domain
     dns = lambda cur_domain: data[cur_domain]['dns'] if 'dns' in data[cur_domain] else []
-    finger_print = lambda cur_domain: data[cur_domain]['ssl']['sha256'] if 'ssl' in data[cur_domain] and 'sha256' in data[cur_domain]['ssl'] else float('NaN')
-    ssl_cipher_mode = lambda cur_domain: data[cur_domain]['ssl']['ciphers'][2] if 'ssl' in data[cur_domain] and 'ciphers' in data[cur_domain]['ssl'] else float('NaN')
-    ssl_key_size = lambda cur_domain: data[cur_domain]['ssl']['ciphers'][0] if 'ssl' in data[cur_domain] and 'ciphers' in data[cur_domain]['ssl'] else float('NaN')
-    ssl_match_name = lambda cur_domain: data[cur_domain]['ssl']['match_hostname'] if 'ssl' in data[cur_domain] and 'match_hostname' in data[cur_domain]['ssl'] else float('NaN')
-    ssl_issuer = lambda cur_domain: data[cur_domain]['ssl']['issuer'] if 'ssl' in data[cur_domain] and 'issuer' in data[cur_domain]['ssl'] else float('NaN')
-    ssl_common_name = lambda cur_domain: data[cur_domain]['ssl']['common_name'] if 'ssl' in data[cur_domain] and 'common_name' in data[cur_domain]['ssl'] else float('NaN')
-    ssl_alt_names = lambda cur_domain: data[cur_domain]['ssl']['subjectAltName'] if 'ssl' in data[cur_domain] and 'subjectAltName' in data[cur_domain]['ssl'] else float('NaN')
+    finger_print = lambda cur_domain: data[cur_domain]['ssl']['sha256'] if 'ssl' in data[cur_domain] and 'sha256' in data[cur_domain]['ssl'] else np.nan
+    finger_print1 = lambda cur_domain: data[cur_domain]['ssl']['sha1'] if 'ssl' in data[cur_domain] and 'sha1' in data[cur_domain]['ssl'] else np.nan
+    ssl_cipher_mode = lambda cur_domain: data[cur_domain]['ssl']['ciphers'][2] if 'ssl' in data[cur_domain] and 'ciphers' in data[cur_domain]['ssl'] else np.nan
+    ssl_key_size = lambda cur_domain: data[cur_domain]['ssl']['ciphers'][0] if 'ssl' in data[cur_domain] and 'ciphers' in data[cur_domain]['ssl'] else np.nan
+    ssl_match_name = lambda cur_domain: data[cur_domain]['ssl']['match_hostname'] if 'ssl' in data[cur_domain] and 'match_hostname' in data[cur_domain]['ssl'] else np.nan
+    ssl_issuer = lambda cur_domain: data[cur_domain]['ssl']['issuer'] if 'ssl' in data[cur_domain] and 'issuer' in data[cur_domain]['ssl'] else np.nan
+    ssl_common_name = lambda cur_domain: data[cur_domain]['ssl']['common_name'] if 'ssl' in data[cur_domain] and 'common_name' in data[cur_domain]['ssl'] else np.nan
+    ssl_alt_names = lambda cur_domain: data[cur_domain]['ssl']['subjectAltName'] if 'ssl' in data[cur_domain] and 'subjectAltName' in data[cur_domain]['ssl'] else np.nan
 
     df['country'] = list(map(lambda cur_domain: country, data))
     df['timestamp'] = list(map(lambda cur_domain: timestamp, data))
     df['domain'] = list(map(domain, data))
     df['dns'] = list(map(dns, data))
     df['sha256'] = list(map(finger_print, data))
+    df['sha1'] = list(map(finger_print1, data))
     df['key_size'] = list(map(ssl_cipher_mode, data))
     df['cipher_mode'] = list(map(ssl_key_size, data))
     df['validSSL'] = list(map(ssl_match_name, data))
@@ -124,7 +126,7 @@ def save_figure(plot, name):
     fig.savefig(os.path.join(args.result, name))
     log.debug('Save figure (%s)', name)
 
-def generate_cipher_mode_graphs(df):
+def generate_cipher_mode_graphs_country(df):
     prev_country = ''
     keysize = df[['country','cipher_mode']].groupby(['country','cipher_mode']).size()
     for (country, cipher_mode) in keysize.index:
@@ -138,9 +140,28 @@ def generate_cipher_mode_graphs(df):
 
     log.info('Generated cipher-mode graphs')
 
+def generate_cipher_mode_graph(df):
+    prev_country = ''
+    keysize = pd.crosstab(df['cipher_mode'],df['country'])
+    name = 'cipher_mode.png'
+    plot = keysize.plot(kind='bar')
+    save_figure(plot, name)
+
+    log.info('Generated cipher-mode graphs')
+
+def generate_match_hostname_graph(df):
+    prev_country = ''
+    keysize = pd.crosstab(df['validSSL'],df['country'])
+    name = 'valid_ssl.png'
+    plot = keysize.plot(kind='bar')
+    save_figure(plot, name)
+
+    log.info('Generated cipher-mode graphs')
+
 
 def find_invalid_certificates(df):
     path_output = os.path.join(args.result, 'invalid_certs.csv')
+    path_output_min = os.path.join(args.result, 'invalid_certs_min.csv')
     # Clear output file
     if os.path.isfile(path_output):
         open(path_output, 'w').close()
@@ -167,12 +188,31 @@ def find_invalid_certificates(df):
             with open(path_output,'a') as f:
                 header = "\n\n{0} -- correct {1}, fault {2}\n".format(group, len(result_max),len(result_min))
                 f.write(header)
+            with open(path_output_min,'a') as f:
+                header = "\n\n{0} -- correct {1}, fault {2}\n".format(group, len(result_max),len(result_min))
+                f.write(header)
 
-            df[['country','commonName','validSSL','sha256','cipher_mode','dns']].iloc[[result_max[0]]].to_csv(path_output, index=None, sep=' ', mode='a')
-            df[['country','commonName','validSSL','sha256','cipher_mode','dns']].iloc[result_min].to_csv(path_output, index=None, sep=' ', mode='a')
+            df[['country','commonName','validSSL','sha256','issuer','cipher_mode','dns']].iloc[[result_max[0]]].to_csv(path_output, index=None, sep=' ', mode='a')
+            df[['country','commonName','validSSL','sha256','issuer','cipher_mode','dns']].iloc[result_min].to_csv(path_output, index=None, sep=' ', mode='a')
+            df[['country','validSSL','sha256','issuer']].iloc[[result_max[0]]].to_csv(path_output_min, index=None, sep=' ', mode='a')
+            df[['country','validSSL','sha256','issuer']].iloc[result_min].to_csv(path_output_min, index=None, sep=' ', mode='a')
 
             log.debug('(%s) Invalid certificates found', group)
     log.info('Finished analyse of invalid certificates')
+
+
+def create_scatter_plot_tls_strength(df):
+    tls_strength = df[['country','key_size', 'cipher_mode']].dropna()
+    cipher_mode, X = np.unique(tls_strength['cipher_mode'], return_inverse=True)
+    tls_strength['int_cipher_mode'] = X
+    plot = tls_strength.plot(kind='scatter', x='key_size',y='int_cipher_mode')
+    save_figure(plot, 'scatter_plot_keysizes.png')
+
+def create_pie_chart_valid_ssl(df):
+    valid_ssl = df[['country','validSSL']].groupby(['country','validSSL']).size()
+    fig, ax = plt.subplots()
+    ax.pie(valid_ssl, labels=["{0} {1}".format(l1, l2) for l1, l2 in valid_ssl.index], autopct='%1.1f%%')
+    fig.savefig(os.path.join(args.result, 'tmp.png'))
 
 def main():
 
@@ -188,8 +228,12 @@ def main():
 
     log.info('Finished importing, [%d] rows to DataFrame', df.shape[0])
 
-    find_invalid_certificates(df)
-    generate_cipher_mode_graphs(df)
+    #create_scatter_plot_tls_strength(df)
+    #create_pie_chart_valid_ssl(df)
+    #find_invalid_certificates(df)
+    #generate_cipher_mode_graphs(df)
+    generate_cipher_mode_graph(df)
+    generate_match_hostname_graph(df)
 
     log.info("Analytics ended")
 
